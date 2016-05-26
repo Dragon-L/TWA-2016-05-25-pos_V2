@@ -1,87 +1,107 @@
 function divideTags(tags) {
     var result = [];
     tags.forEach(function (tag) {
-        var stringArray = tag.split('-');
-        var object = {};
-        object.barcode = stringArray[0];
-        object.count = parseInt(stringArray[1])||1;
-        result.push(object);
-    })
+        var tagInfo = tag.split('-');
+        var tagObject = {
+            barcode : tagInfo[0],
+            count : parseInt(tagInfo[1]) || 1
+        };
+        result.push(tagObject);
+    });
     return result;
 }
-function transferCartItems(tags,items) {
-    var result = [];
+
+function buildItems(tags, items) {
+    var results = [];
+
     tags.forEach(function (tag) {
-        var exitItem = result.find(function (item) {
+        var existItem = results.find(function (item) {
             return tag.barcode === item.barcode;
         });
-        if (!exitItem){
-            var object = items.find(function (item) {
+
+        if (!existItem){
+            var itemModel = items.find(function (item) {
                 return tag.barcode === item.barcode;
             });
-            exitItem = Object.assign({
+
+            existItem = Object.assign({
                 count : 0
-            },object);
-            result.push(exitItem);
+            },itemModel);
+            results.push(existItem);
         }
-        exitItem.count += tag.count;
-    })
-    return result;
+        existItem.count += tag.count;
+    });
+    console.debug(results);
+    return results;
 }
-function calculateSubTotal(cartItems){
+
+function calculateSubtotal(cartItems){
     var result = [];
+
     cartItems.forEach(function (item) {
-        var subTotal = item.price * item.count;
+        var subtotal = item.price * item.count;
         var object = Object.assign({
-            subTotal : subTotal,
+            subtotal : subtotal
         },item);
         result.push(object);
     });
+
     return result;
 }
-function applyPromotions(cartItems,promotionsArray){
-    var result = cartItems.map(function (element) {
+
+function promotionBuyTwoGetOneFree(promotion, items) {
+    promotion.barcodes.forEach(function (barcode) {
+        var object = items.find(function (item) {
+            return item.barcode === barcode;
+        });
+        if (object) {
+            object.count -= parseInt(object.count / 3);
+            object.subtotal = object.count * object.price;
+        }
+    })
+}
+
+function applyPromotions(items,promotionsArray){
+    var newItems = items.map(function (element) {
         return Object.assign({
             originCount : element.count
-    },element);
+        },element);
     });
+
     promotionsArray.forEach(function (promotion) {
         if (promotion.type === 'BUY_TWO_GET_ONE_FREE'){
-            promotion.barcodes.forEach(function (barcode) {
-                var object = result.find(function(item){
-                    return item.barcode === barcode;
-                });
-                if (object){
-                    object.count -= parseInt(object.count/3);
-                    object.subTotal = object.count * object.price;
-                }
-            })
+            promotionBuyTwoGetOneFree(promotion, newItems);
         }
     });
-    return result;
+    return newItems;
 }
-function calculateTotal(cartItems){
+
+function calculateTotalPrice(cartItems){
     var result = 0;
     cartItems.forEach(function (item) {
-        result += item.subTotal;
+        result += item.subtotal;
     });
     return result;
 }
-function generateFreeItems(originalCartItems,discountCartItems) {
-    var result = [];
-    for(var i = 0,len = originalCartItems.length;i < len;i++){
-        if(originalCartItems[i].count != discountCartItems[i].count){
-            var object = {};
-            object.name = originalCartItems[i].name;
-            object.unit = originalCartItems[i].unit;
-            object.freecount = originalCartItems[i].count - discountCartItems[i].count;
-            object.subTotal = originalCartItems[i].price * object.freecount;
-            result.push(object);
-        }
-    }
-    return result;
+
+function generateFreeItems(originalCartItems,promotionItems) {
+    var results = originalCartItems.map(function (originalItem) {
+        var promotionItem = promotionItems.find(function (item) {
+            return originalItem.barcode === item.barcode;
+        });
+        originalItem.count -= promotionItem.count;
+        originalItem.subtotal = originalItem.count * originalItem.price;
+        return originalItem;
+    });
+
+    results = results.filter(function (item) {
+        return item.count > 0;
+    });
+    return results;
 }
-function printShoppingList(discountCartItems,freeItems,total,saved) {
+
+function generateTime() {
+    var result = null;
     var dateDigitToString = function (num) {
         return num < 10 ? '0' + num : num;
     };
@@ -92,18 +112,22 @@ function printShoppingList(discountCartItems,freeItems,total,saved) {
         hour = dateDigitToString(currentDate.getHours()),
         minute = dateDigitToString(currentDate.getMinutes()),
         second = dateDigitToString(currentDate.getSeconds()),
-        formattedDateString = year + '年' + month + '月' + date + '日 ' + hour + ':' + minute + ':' + second;
+        result = year + '年' + month + '月' + date + '日 ' + hour + ':' + minute + ':' + second;
+    return result;
+}
+function printShoppingList(discountCartItems,freeItems,total,saved) {
+    var formattedDateString = generateTime();
     var printText = '***<没钱赚商店>购物清单***\n' +
                     '打印时间：' + formattedDateString + '\n' +
                     '----------------------\n';
     discountCartItems.forEach(function (cartItem) {
         printText += `名称：${cartItem.name}，数量：${cartItem.originCount}${cartItem.unit}，` +
-                     `单价：${cartItem.price.toFixed(2)}(元)，小计：${cartItem.subTotal.toFixed(2)}(元)\n`;
+                     `单价：${cartItem.price.toFixed(2)}(元)，小计：${cartItem.subtotal.toFixed(2)}(元)\n`;
     });
     printText += '----------------------\n' +
                  '挥泪赠送商品：\n';
     freeItems.forEach(function (freeItem) {
-        printText += `名称：${freeItem.name}，数量：${freeItem.freecount}${freeItem.unit}\n`;
+        printText += `名称：${freeItem.name}，数量：${freeItem.count}${freeItem.unit}\n`;
     });
     printText += '----------------------\n' +
                  `总计：${total.toFixed(2)}(元)\n` +
@@ -114,11 +138,11 @@ function printShoppingList(discountCartItems,freeItems,total,saved) {
 
 function printInventory(inputs) {
     var tags = divideTags(inputs);
-    var mergeCartItems = transferCartItems(tags,loadAllItems());
-    var originalCartItems = calculateSubTotal(mergeCartItems);
-    var discountCartItems = applyPromotions(originalCartItems,loadPromotions());
-    var total = calculateTotal(discountCartItems);
-    var freeItems = generateFreeItems(originalCartItems,discountCartItems);
-    var saved = calculateTotal(freeItems);
-    printShoppingList(discountCartItems,freeItems,total,saved);
+    var items = buildItems(tags,loadAllItems());
+    var itemsHasSubtotal = calculateSubtotal(items);
+    var promotionItems = applyPromotions(itemsHasSubtotal,loadPromotions());
+    var pay = calculateTotalPrice(promotionItems);
+    var freeItems = generateFreeItems(itemsHasSubtotal,promotionItems);
+    var saved = calculateTotalPrice(freeItems);
+    printShoppingList(promotionItems,freeItems,pay,saved);
 }
